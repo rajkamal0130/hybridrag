@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Hybrid RAG Studio</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js"></script>
+</head>
+<body>
+<div class="app">
+  <!-- ============ sidebar ============ -->
+  <aside class="sidebar">
+    <div class="brand">
+      <svg viewBox="0 0 32 32" width="28" height="28" aria-hidden="true">
+        <circle cx="8" cy="9" r="4" fill="var(--c-vector)"/>
+        <circle cx="24" cy="9" r="4" fill="var(--c-graph)"/>
+        <circle cx="16" cy="24" r="5" fill="var(--c-hybrid)"/>
+        <path d="M8 9 L24 9 L16 24 Z" fill="none" stroke="var(--muted)" stroke-width="1.5"/>
+      </svg>
+      <div>
+        <div class="brand-name">Hybrid RAG</div>
+        <div class="brand-sub">Vectors + Knowledge Graph</div>
+      </div>
+    </div>
+
+    <nav class="nav">
+      <button class="nav-item active" data-view="ask">
+        <svg viewBox="0 0 24 24"><path d="M4 5h16v11H8l-4 4z"/></svg><span>Ask</span>
+      </button>
+      <button class="nav-item" data-view="compare">
+        <svg viewBox="0 0 24 24"><path d="M4 4h4v16H4zM10 4h4v16h-4zM16 4h4v16h-4z"/></svg><span>Compare modes</span>
+      </button>
+      <button class="nav-item" data-view="graph">
+        <svg viewBox="0 0 24 24"><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="7" r="2.5"/><circle cx="12" cy="18" r="2.5"/><path d="M6 6l12 1M6 6l6 12M18 7l-6 11"/></svg><span>Knowledge graph</span>
+      </button>
+      <button class="nav-item" data-view="docs">
+        <svg viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/></svg><span>Documents</span>
+      </button>
+    </nav>
+
+    <div class="status" id="status">
+      <div class="status-title">System</div>
+      <div class="status-row"><span>Vectors</span><b id="st-vectors">–</b></div>
+      <div class="status-row"><span>Entities</span><b id="st-entities">–</b></div>
+      <div class="status-row"><span>Relations</span><b id="st-relations">–</b></div>
+      <div class="status-row"><span>Graph store</span><b id="st-store" class="pill">–</b></div>
+      <div class="status-row"><span>Traversal</span><b id="st-engine">–</b></div>
+      <div class="status-row"><span>Model</span><b id="st-model">–</b></div>
+      <div class="status-warn" id="st-warn" hidden></div>
+      <button class="theme-toggle" id="theme-toggle" title="Toggle theme">◐ Theme</button>
+    </div>
+  </aside>
+
+  <!-- ============ main ============ -->
+  <main class="main">
+
+    <!-- ---------- Ask ---------- -->
+    <section class="view active" id="view-ask">
+      <header class="view-head">
+        <h1>Ask your documents</h1>
+        <p>Answers grounded in your PDFs, with the vector hits and graph facts that produced them.</p>
+      </header>
+
+      <div class="composer card">
+        <textarea id="ask-q" rows="2" placeholder="Ask a question… e.g. Which services publish events to Kafka, and who consumes them?"></textarea>
+        <div class="composer-bar">
+          <div class="segmented" id="ask-mode">
+            <button data-mode="vector"><i class="dot vector"></i>Vector</button>
+            <button data-mode="graph"><i class="dot graph"></i>Graph</button>
+            <button data-mode="hybrid" class="on"><i class="dot hybrid"></i>Hybrid</button>
+          </div>
+          <label class="field-inline">top-k
+            <input type="number" id="ask-k" min="1" max="20" value="5">
+          </label>
+          <label class="switch"><input type="checkbox" id="ask-ronly"><span></span>Retrieval only</label>
+          <button class="btn primary" id="ask-go">Ask <kbd>⌘↵</kbd></button>
+        </div>
+      </div>
+
+      <div class="samples" id="ask-samples"></div>
+
+      <div id="ask-out" class="ask-out"></div>
+    </section>
+
+    <!-- ---------- Compare ---------- -->
+    <section class="view" id="view-compare">
+      <header class="view-head">
+        <h1>Compare retrieval modes</h1>
+        <p>One question through plain RAG, GraphRAG and Hybrid RAG, side by side.</p>
+      </header>
+      <div class="composer card">
+        <textarea id="cmp-q" rows="2" placeholder="e.g. What happens between a creator uploading a track and it being playable?"></textarea>
+        <div class="composer-bar">
+          <label class="field-inline">top-k <input type="number" id="cmp-k" min="1" max="20" value="5"></label>
+          <label class="switch"><input type="checkbox" id="cmp-ronly"><span></span>Retrieval only</label>
+          <button class="btn primary" id="cmp-go">Run all three</button>
+        </div>
+      </div>
+      <div class="compare-grid" id="cmp-out"></div>
+    </section>
+
+    <!-- ---------- Graph ---------- -->
+    <section class="view" id="view-graph">
+      <header class="view-head row">
+        <div>
+          <h1>Knowledge graph</h1>
+          <p>Entities and relations extracted from your PDFs. Click a node to inspect it.</p>
+        </div>
+        <div class="graph-controls">
+          <div class="search">
+            <input id="g-entity" placeholder="Focus on entity… (Kafka, PostgreSQL)">
+            <button class="btn" id="g-focus">Focus</button>
+            <button class="btn ghost" id="g-reset">All</button>
+          </div>
+          <label class="field-inline">nodes
+            <select id="g-limit"><option>50</option><option selected>150</option><option>300</option><option>600</option></select>
+          </label>
+          <label class="switch"><input type="checkbox" id="g-labels"><span></span>Edge labels</label>
+        </div>
+      </header>
+      <div class="legend" id="g-legend"></div>
+      <div class="graph-wrap">
+        <div id="g-canvas" class="graph-canvas card"></div>
+        <aside class="graph-side card" id="g-side">
+          <div class="empty small">Select a node or edge to see its details and source pages.</div>
+        </aside>
+      </div>
+    </section>
+
+    <!-- ---------- Documents ---------- -->
+    <section class="view" id="view-docs">
+      <header class="view-head">
+        <h1>Documents</h1>
+        <p>Upload PDFs, index them into FAISS and extract the knowledge graph.</p>
+      </header>
+
+      <div class="docs-top">
+        <label class="dropzone card" id="dropzone">
+          <input type="file" id="file-input" accept="application/pdf,.pdf" multiple hidden>
+          <svg viewBox="0 0 24 24" width="32" height="32"><path d="M12 16V4M6 10l6-6 6 6M4 20h16"/></svg>
+          <div><b>Drop PDFs here</b> or click to browse</div>
+          <div class="muted small">Files are saved to data/pdfs</div>
+        </label>
+        <div class="actions card">
+          <div class="actions-title">Indexing</div>
+          <button class="btn" id="act-vectors"><span class="step">1</span> Index vectors only <em>free, local</em></button>
+          <button class="btn primary" id="act-graph"><span class="step">2</span> Index + build knowledge graph <em>uses OpenAI</em></button>
+          <button class="btn danger-ghost" id="act-rebuild">Rebuild graph from scratch</button>
+        </div>
+      </div>
+
+      <div id="docs-log"></div>
+
+      <div class="docs-grid">
+        <div class="card table-card">
+          <table class="table" id="docs-table">
+            <thead><tr><th>PDF</th><th>Size</th><th>Chunks</th><th>Vectors</th><th>Graph</th><th></th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div class="card preview">
+          <div class="preview-head"><span id="preview-name" class="muted">No PDF selected</span><a id="preview-open" target="_blank" hidden>Open ↗</a></div>
+          <iframe id="preview-frame" title="PDF preview"></iframe>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div class="toasts" id="toasts"></div>
+<script src="app.js"></script>
+</body>
+</html>

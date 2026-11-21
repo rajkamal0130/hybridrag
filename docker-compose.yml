@@ -1,0 +1,56 @@
+services:
+  # Local Neo4j, only with:  docker compose --profile local-neo4j up
+  # (by default the backend uses NEO4J_URI from .env, e.g. Neo4j Aura)
+  neo4j:
+    image: neo4j:5.26-community
+    profiles: ["local-neo4j"]
+    ports:
+      - "7474:7474"   # Neo4j Browser: http://localhost:7474
+      - "7687:7687"   # Bolt
+    environment:
+      - NEO4J_AUTH=neo4j/${NEO4J_PASSWORD:-hybridrag123}
+    volumes:
+      - neo4j_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "cypher-shell -u neo4j -p '${NEO4J_PASSWORD:-hybridrag123}' 'RETURN 1'"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 20s
+    restart: unless-stopped
+
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - LLM_MODEL=${LLM_MODEL:-gpt-5.5}
+      - OPENAI_REASONING_EFFORT=${OPENAI_REASONING_EFFORT:-}
+      - NEO4J_URI=${NEO4J_URI-bolt://neo4j:7687}   # unset -> local container; empty -> graph.json only
+      - NEO4J_USERNAME=${NEO4J_USERNAME:-${NEO4J_USER:-neo4j}}
+      - NEO4J_PASSWORD=${NEO4J_PASSWORD:-hybridrag123}
+      - NEO4J_DATABASE=${NEO4J_DATABASE:-neo4j}
+      - GRAPH_QUERY_ENGINE=${GRAPH_QUERY_ENGINE:-neo4j}
+    volumes:
+      - ./data:/data          # PDFs in ./data/pdfs, FAISS + graph.json snapshot in ./data/index
+    depends_on:
+      neo4j:
+        condition: service_healthy
+        required: false   # only when the local-neo4j profile is on
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "8501:8501"
+    environment:
+      - API_URL=http://backend:8000          # container-to-container
+      - PUBLIC_API_URL=http://localhost:8000 # links opened in your browser
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  neo4j_data:

@@ -1,0 +1,12 @@
+fastapi==0.115.6
+uvicorn[standard]==0.32.1
+python-multipart==0.0.20
+pypdf==5.1.0
+numpy<2.1
+faiss-cpu==1.9.0.post1
+fastembed==0.4.2
+networkx==3.4.2
+neo4j==5.28.1
+python-dotenv==1.0.1
+certifi
+openai>=1.0.0
